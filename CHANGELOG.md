@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.01] - 2026-11-25
+
+### Added
+- New playlist...: make your own playlists by searching your songs (artist, title, album, year or genre), adding them, putting them in order and naming them. They show under My playlists and are saved with the others; double-click one to change or delete it.
+
 ## [1.00] - 2026-11-25
 First release.
 

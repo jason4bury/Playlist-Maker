@@ -6,7 +6,7 @@
 
 Makes M3U playlists from your MP3s by decade, genre and artist, straight from their tags.
 
-![Version](https://img.shields.io/badge/version-v1.00-blue) ![Platform](https://img.shields.io/badge/platform-Windows-0078D6) ![PowerShell](https://img.shields.io/badge/PowerShell-5.1-5391FE) ![Licence](https://img.shields.io/badge/licence-MIT-green) ![Last commit](https://img.shields.io/github/last-commit/jason4bury/Playlist-Maker)
+![Version](https://img.shields.io/badge/version-v1.01-blue) ![Platform](https://img.shields.io/badge/platform-Windows-0078D6) ![PowerShell](https://img.shields.io/badge/PowerShell-5.1-5391FE) ![Licence](https://img.shields.io/badge/licence-MIT-green) ![Last commit](https://img.shields.io/github/last-commit/jason4bury/Playlist-Maker)
 
 ## ✨ Features
 
@@ -21,6 +21,7 @@ Playlist Maker is a PowerShell/WPF tool that reads the tags of the MP3s in your 
 - **See before you save**: the list shows every playlist with its songs, running time and whether it is new, changed or up to date. Filter by kind, search by name, and double-click a playlist to see its songs.
 - **Relative paths** by default, so the playlists keep working when the music folder is copied to a NAS, another PC or a phone. Or `/` paths for NAS and phone players, or full paths.
 - **Tidy**: only playlists that changed are rewritten; ones it made before that are no longer wanted go to the Recycle Bin; a playlist with the same name made by something else is only replaced if you say so.
+- **Make your own playlists**: search your songs by artist, title, album, year or genre, add them, put them in your order and name the playlist. Double-click one later to change it.
 - **Import playlists you already have** (.m3u, .m3u8, .pls, .wpl, .zpl, .xspf). Their songs are found in your music even when the playlist was made on another PC, drive or NAS (by the same folders, or by artist and title), and they are saved with the others in your choice of paths and file type. Songs that can't be found are listed.
 - **Never touches your music**: the MP3s are only read.
 - **Missing tags**: the status bar says how many songs have no year, genre or artist, and clicking it lists them.
@@ -42,7 +43,7 @@ Double-click a playlist to see its songs:
 
 ## 📦 Installation
 
-1. Download `Playlist-Maker-v1.00.zip` from the [latest release](../../releases/latest) and unzip it wherever you like to keep it.
+1. Download `Playlist-Maker-v1.01.zip` from the [latest release](../../releases/latest) and unzip it wherever you like to keep it.
 2. Double-click **Playlist Maker.cmd** in the unzipped folder. It makes a **Playlist Maker** shortcut there and in the Start menu, and starts the tool. From then on, use the shortcut, the Start menu or a pinned taskbar button.
 
 Nothing is installed and no Windows settings are changed. The shortcut runs the script with PowerShell's execution policy bypassed for that run only.
@@ -63,7 +64,7 @@ Double-click **Build.cmd** in the repo folder. It reads `build.json`, checks eve
 2. **Add folder...** for each folder of music (a NAS share works too). Everything under it is read.
 3. Press **Read music**. The first read of a big collection takes a few minutes; later ones are quick.
 4. Tick the playlists you want and pick the options on the left. The list updates as you go.
-5. To bring in playlists you already have, press **Import playlists...** and pick them. They show under **Imported**; double-click one to see its songs or **Remove import**.
+5. To make one by hand, press **New playlist...**, search, **Add** the songs you want and **Save**. To bring in playlists you already have, press **Import playlists...** and pick them. They show under **Imported**; double-click one to see its songs or **Remove import**.
 6. Press **Save playlists**. The first time, it asks which folder to put them in (**Choose...** changes it later; or pick **A folder inside each music folder** to give each music folder its own). **Open playlists folder** shows them.
 
 Press **Read music** and **Save playlists** again whenever you add music: new playlists are added, changed ones updated and the rest left alone.
@@ -87,6 +88,7 @@ A song on a different drive from its playlist always gets a full path.
 - `made.txt`: the playlists Playlist Maker has saved, so it knows which old ones it may tidy away.
 - `kept.txt`: same-named playlists made by something else that you chose to keep.
 - `imports.json`: the playlists you imported, as the songs they matched.
+- `my-playlists.json`: the playlists you made yourself.
 - `Playlist Maker.log`: reads, saves and anything that went wrong.
 
 ## 📝 Changelog

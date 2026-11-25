@@ -31,7 +31,7 @@ $ErrorActionPreference = 'Stop'
 # The version lives here and in CHANGELOG.md; Build.cmd stops if they disagree.
 # Two-digit minor: 1.00, 1.01 ... 1.10. The release folder is "Playlist Maker v<version>".
 $script:AppName     = 'Playlist Maker'
-$script:AppVersion  = '1.00'
+$script:AppVersion  = '1.01'
 $script:Description = 'PowerShell/WPF tool for making playlists from MP3 tags'
 $script:Copyright   = 'Copyright (c) 2026 Jason Rhodes'
 $script:RepoUrl     = 'https://github.com/jason4bury/Playlist-Maker'
@@ -79,6 +79,7 @@ $script:CachePath    = Join-Path $script:DataDir 'tags.cache'     # tags read la
 $script:MadePath     = Join-Path $script:DataDir 'made.txt'       # the playlists this app has written
 $script:KeptPath     = Join-Path $script:DataDir 'kept.txt'       # same-named playlists you chose to keep, made by something else
 $script:ImportsPath  = Join-Path $script:DataDir 'imports.json'   # playlists you imported, as the songs they matched
+$script:MinePath     = Join-Path $script:DataDir 'my-playlists.json'   # playlists you made yourself in New playlist...
 if (-not (Test-Path -LiteralPath $script:DataDir)) { New-Item -ItemType Directory -Path $script:DataDir -Force | Out-Null }
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms, Microsoft.VisualBasic
@@ -1018,7 +1019,33 @@ public static class PmBuild {
 
     // An imported playlist, in its own order, saved beside the music folder most of its songs are in.
     public static void AddImported(List<PmList> plan, Dictionary<string, PmSong> byPath, PmOptions o, string name, string[] paths, int notFound) {
-        var l = new PmList { Kind = "Imported", Name = name, Missing = notFound };
+        AddList(plan, byPath, o, name, paths, notFound, "Imported");
+    }
+
+    // Songs whose artist, title, album, genre, year or file name hold every word typed, sorted by artist and album.
+    public static int LastFound;
+    public static List<PmSong> Find(List<PmSong> songs, string text, int max) {
+        var terms = (text ?? "").ToLowerInvariant().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        var r = new List<PmSong>();
+        foreach (var s in songs) {
+            if (terms.Length > 0) {
+                string hay = (s.Artist + " " + s.AlbumArtist + " " + s.Title + " " + s.Album + " " + s.Genre + " " + (s.Year > 0 ? s.Year.ToString() : "") + " " +
+                              System.IO.Path.GetFileNameWithoutExtension(s.Path)).ToLowerInvariant();
+                bool ok = true;
+                foreach (var t in terms) if (hay.IndexOf(t, StringComparison.Ordinal) < 0) { ok = false; break; }
+                if (!ok) continue;
+            }
+            r.Add(s);
+        }
+        LastFound = r.Count;
+        Sort(r, "Artist");
+        if (r.Count > max) r.RemoveRange(max, r.Count - max);
+        return r;
+    }
+
+    // An imported or hand-made playlist, in its own order, saved beside the music folder most of its songs are in.
+    public static void AddList(List<PmList> plan, Dictionary<string, PmSong> byPath, PmOptions o, string name, string[] paths, int notFound, string kind) {
+        var l = new PmList { Kind = kind, Name = name, Missing = notFound };
         var roots = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var p in paths) {
             PmSong s;
@@ -1274,6 +1301,9 @@ The list shows every playlist that would be made, how many songs it has and how 
 
 4. SAVE PLAYLISTS
 Save playlists writes them. Playlists it made before that are no longer wanted (an artist with too few songs now, say) go to the Recycle Bin. If a playlist with the same name is already there and Playlist Maker didn't make it, it asks before replacing it; if you keep it, it is left alone from then on (shown as Kept), and you aren't asked again.
+
+YOUR OWN PLAYLISTS
+New playlist... makes one by hand, after Read music. Search your songs on the left (artist, song, album, year or genre; several words narrow it down), pick them (Ctrl or Shift + click for several) and press Add, or double-click a song. On the right, Move up and Move down change the order, and Remove (or the Delete key) takes songs out. Give it a name and press Save. Your playlists show under My playlists and are saved with the others in your choice of paths and file type. Double-click one to change it or delete it.
 
 IMPORTING PLAYLISTS
 Import playlists... brings in playlists you already have (.m3u, .m3u8, .pls, .wpl, .zpl and .xspf), after Read music. Each song is found in your music folders: the same file, or the same file in the same folders on another drive, PC or NAS, or else the same artist and title. Songs that can't be found are listed and left out. An imported playlist keeps its own order and name, shows under Imported, and is saved with the others in your choice of paths and file type, beside the music folder most of its songs are in. Importing one with the same name again replaces it. To drop one, double-click it and press Remove import; the next save sends its file to the Recycle Bin.
@@ -1546,6 +1576,7 @@ STYLES
       <DockPanel Grid.Column="1" Margin="14,0,0,0">
         <DockPanel DockPanel.Dock="Top">
           <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+            <Button x:Name="BtnNew" Content="New playlist..." ToolTip="Make your own playlist: pick songs from your music and put them in your order"/>
             <Button x:Name="BtnImport" Content="Import playlists..." ToolTip="Bring in playlists you already have (.m3u, .m3u8, .pls, .wpl, .xspf)"/>
             <Button x:Name="BtnRead" Content="Read music" Style="{StaticResource Accent}" MinWidth="110"/>
             <Button x:Name="BtnSave" Content="Save playlists" Style="{StaticResource Accent}" MinWidth="120" Margin="0" IsEnabled="False"/>
@@ -1572,6 +1603,7 @@ STYLES
             <RadioButton x:Name="PillGroup" Style="{StaticResource Pill}" GroupName="Kind" Tag="Group" Content="Groups"/>
             <RadioButton x:Name="PillShuffle" Style="{StaticResource Pill}" GroupName="Kind" Tag="Shuffle" Content="Shuffles"/>
             <RadioButton x:Name="PillImported" Style="{StaticResource Pill}" GroupName="Kind" Tag="Imported" Content="Imported"/>
+            <RadioButton x:Name="PillMine" Style="{StaticResource Pill}" GroupName="Kind" Tag="Mine" Content="My playlists"/>
           </WrapPanel>
         </DockPanel>
         <Border Background="{Card}" BorderBrush="{Line}" BorderThickness="1" CornerRadius="8" Padding="6">
@@ -1602,6 +1634,8 @@ STYLES
 
 $script:Songs = $null      # what the last Read music found
 $script:Imports = @()      # playlists you imported (read at the start)
+$script:Mine = @()         # playlists you made yourself (read at the start)
+$script:Zoom = 1.0         # how much larger the windows are drawn on a big screen
 $script:Plan  = $null      # the playlists that would be made from it
 $script:Missing = $null    # songs with no year, genre or artist
 
@@ -1774,6 +1808,10 @@ function Update-Plan {
         $byPath = [PmBuild]::PathIndex($script:Songs)
         foreach ($imp in $script:Imports) { [PmBuild]::AddImported($script:Plan, $byPath, $o, [string]$imp.Name, [string[]]@($imp.Paths), @($imp.NotFound).Count) }
     }
+    if (@($script:Mine).Count) {
+        $byPath = [PmBuild]::PathIndex($script:Songs)
+        foreach ($m in $script:Mine) { [PmBuild]::AddList($script:Plan, $byPath, $o, [string]$m.Name, [string[]]@($m.Paths), 0, 'Mine') }
+    }
     Update-State
     Show-Plan
 }
@@ -1790,7 +1828,7 @@ function Show-Plan {
     $ui = $script:UI
     $plan = $script:Plan
     # One pass for the counts (a big collection can make thousands of artist playlists).
-    $count = @{ '' = 0; Decade = 0; Genre = 0; Artist = 0; Mix = 0; Group = 0; Shuffle = 0; Imported = 0; New = 0; Changed = 0; 'Up to date' = 0; Kept = 0 }
+    $count = @{ '' = 0; Decade = 0; Genre = 0; Artist = 0; Mix = 0; Group = 0; Shuffle = 0; Imported = 0; Mine = 0; New = 0; Changed = 0; 'Up to date' = 0; Kept = 0 }
     if ($null -ne $plan) {
         foreach ($l in $plan) {
             $count[''] += 1; $count[$l.Kind] += 1
@@ -1798,11 +1836,11 @@ function Show-Plan {
         }
     }
     # A pill for each kind that is ticked; a hidden pill that was picked goes back to All.
-    $kinds = @{ '' = 'All'; Decade = 'Decades'; Genre = 'Genres'; Artist = 'Artists'; Mix = 'Mixes'; Group = 'Groups'; Shuffle = 'Shuffles'; Imported = 'Imported' }
+    $kinds = @{ '' = 'All'; Decade = 'Decades'; Genre = 'Genres'; Artist = 'Artists'; Mix = 'Mixes'; Group = 'Groups'; Shuffle = 'Shuffles'; Imported = 'Imported'; Mine = 'My playlists' }
     $ticked = @{ '' = $true; Decade = $script:Settings.Decades; Genre = $script:Settings.Genres; Artist = $script:Settings.Artists; Mix = $script:Settings.Mixes
                  Group = $script:Settings.Groups; Shuffle = $script:Settings.Shuffles
-                 Imported = ($count.Imported -gt 0 -or @($script:Imports).Count -gt 0) }
-    foreach ($p in 'PillAll', 'PillDecade', 'PillGenre', 'PillArtist', 'PillMix', 'PillGroup', 'PillShuffle', 'PillImported') {
+                 Imported = ($count.Imported -gt 0 -or @($script:Imports).Count -gt 0); Mine = ($count.Mine -gt 0 -or @($script:Mine).Count -gt 0) }
+    foreach ($p in 'PillAll', 'PillDecade', 'PillGenre', 'PillArtist', 'PillMix', 'PillGroup', 'PillShuffle', 'PillImported', 'PillMine') {
         $k = [string]$ui[$p].Tag
         $ui[$p].Content = if ($null -ne $plan) { "$($kinds[$k])  $($count[$k])" } else { $kinds[$k] }
         $ui[$p].Visibility = if ($ticked[$k]) { 'Visible' } else { 'Collapsed' }
@@ -1822,7 +1860,7 @@ function Show-Plan {
     $bits = @(); if ($new) { $bits += "$new new" }; if ($chg) { $bits += "$chg changed" }; if ($ok) { $bits += "$ok up to date" }; if ($kp) { $bits += "$kp kept" }
     $ui.TxtSummary.Text = "$('{0:N0}' -f $plan.Count) playlist$(if ($plan.Count -ne 1) { 's' }) from $('{0:N0}' -f $script:Songs.Count) songs" + $(if ($bits) { ':  ' + ($bits -join ', ') } else { '' })
 
-    $kind = [string](@('PillAll', 'PillDecade', 'PillGenre', 'PillArtist', 'PillMix', 'PillGroup', 'PillShuffle', 'PillImported' | Where-Object { $ui[$_].IsChecked } | ForEach-Object { $ui[$_].Tag }) | Select-Object -First 1)
+    $kind = [string](@('PillAll', 'PillDecade', 'PillGenre', 'PillArtist', 'PillMix', 'PillGroup', 'PillShuffle', 'PillImported', 'PillMine' | Where-Object { $ui[$_].IsChecked } | ForEach-Object { $ui[$_].Tag }) | Select-Object -First 1)
     $find = $ui.TxtSearch.Text.Trim()
     $shown = New-Object 'System.Collections.Generic.List[PmList]'
     foreach ($l in $plan) {
@@ -1995,6 +2033,196 @@ function Save-Playlists {
 }
 
 # ---------------------------------------------------------------------------
+#  Your own playlists: pick songs from your music, in your order
+# ---------------------------------------------------------------------------
+function Get-JsonList([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return @() }
+    try {
+        $j = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+        return @($j | Where-Object { $_.Name })
+    } catch { Write-AppLog "$(Split-Path -Leaf $Path) couldn't be read: $($_.Exception.Message)"; return @() }
+}
+
+function Save-JsonList([string]$Path, $Items) {
+    try { ConvertTo-Json -InputObject @($Items) -Depth 4 | Set-Content -LiteralPath $Path -Encoding UTF8 }
+    catch { Write-AppLog "$(Split-Path -Leaf $Path) couldn't be saved: $($_.Exception.Message)" }
+}
+
+function Show-PlaylistEditor {
+    <# New playlist..., or (with -Name) changing one you made before. #>
+    param([string]$Name)
+    if ($null -eq $script:Songs) {
+        [void](Show-AppMessage 'Press Read music first, so your songs are there to pick from.' -Title 'New playlist')
+        return
+    }
+    $x = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="1180" Height="740" ShowInTaskbar="False" WindowStartupLocation="CenterOwner"
+        FontFamily="Segoe UI" FontSize="14" Background="{Page}" Foreground="{Ink}">
+  <Window.Resources>
+STYLES
+    <DataTemplate x:Key="SongRow">
+      <StackPanel>
+        <TextBlock Text="{Binding Line}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+        <TextBlock Text="{Binding Info}" Foreground="{Soft}" FontSize="12" TextTrimming="CharacterEllipsis" Margin="0,1,0,0"/>
+      </StackPanel>
+    </DataTemplate>
+  </Window.Resources>
+  <DockPanel x:Name="EdRoot" Margin="18,16,18,14">
+    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,14">
+      <TextBlock Text="Playlist name" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>
+      <TextBox x:Name="EdName" Height="34" Width="380" HorizontalAlignment="Left"/>
+    </DockPanel>
+    <DockPanel DockPanel.Dock="Bottom" Margin="0,14,0,0">
+      <Button x:Name="EdDelete" DockPanel.Dock="Left" Content="Delete this playlist" Visibility="Collapsed"/>
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+        <Button x:Name="EdSave" Content="Save" Style="{StaticResource Accent}" MinWidth="90"/>
+        <Button x:Name="EdCancel" Content="Cancel" MinWidth="90" Margin="0" IsCancel="True"/>
+      </StackPanel>
+      <TextBlock x:Name="EdNote" Foreground="{Soft}" VerticalAlignment="Center" Margin="4,0,12,0" TextWrapping="Wrap"/>
+    </DockPanel>
+    <Grid>
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Text="Your music" FontSize="16" FontWeight="SemiBold" Margin="2,0,0,8"/>
+        <Grid DockPanel.Dock="Top">
+          <TextBox x:Name="EdFind" Height="34"/>
+          <TextBlock x:Name="EdFindHint" Text="Search: artist, song, album, year or genre" Foreground="{Soft}" Margin="11,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+        </Grid>
+        <TextBlock x:Name="EdFound" DockPanel.Dock="Bottom" Foreground="{Soft}" Margin="2,8,0,0" TextWrapping="Wrap"/>
+        <Border Background="{Card}" BorderBrush="{Line}" BorderThickness="1" CornerRadius="8" Padding="4" Margin="0,8,0,0">
+          <ListBox x:Name="EdResults" SelectionMode="Extended" BorderThickness="0" Background="Transparent" ItemTemplate="{StaticResource SongRow}"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"/>
+        </Border>
+      </DockPanel>
+      <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="14,0">
+        <Button x:Name="EdAdd" Content="Add  &#x2192;" Style="{StaticResource Accent}" Margin="0,0,0,8" ToolTip="Add the songs picked on the left (or double-click a song)"/>
+        <Button x:Name="EdAddAll" Content="Add all shown" Margin="0,0,0,28"/>
+        <Button x:Name="EdUp" Content="Move up" Margin="0,0,0,8"/>
+        <Button x:Name="EdDown" Content="Move down" Margin="0,0,0,8"/>
+        <Button x:Name="EdRemove" Content="Remove" Margin="0,0,0,8" ToolTip="Take the picked songs out (or press Delete)"/>
+        <Button x:Name="EdClear" Content="Remove all" Margin="0"/>
+      </StackPanel>
+      <DockPanel Grid.Column="2">
+        <TextBlock x:Name="EdCount" DockPanel.Dock="Top" FontSize="16" FontWeight="SemiBold" Margin="2,0,0,8"/>
+        <Border Background="{Card}" BorderBrush="{Line}" BorderThickness="1" CornerRadius="8" Padding="4">
+          <Grid>
+            <TextBlock x:Name="EdEmpty" Text="Search on the left, then Add the songs you want." Foreground="{Soft}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="30"/>
+            <ListBox x:Name="EdList" SelectionMode="Extended" BorderThickness="0" Background="Transparent" ItemTemplate="{StaticResource SongRow}"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"/>
+          </Grid>
+        </Border>
+      </DockPanel>
+    </Grid>
+  </DockPanel>
+</Window>
+'@.Replace('STYLES', $script:Styles)
+    $w = New-XamlWindow $x $script:Window
+    if ($script:Zoom -gt 1.01) {
+        $w.FindName('EdRoot').LayoutTransform = New-Object Windows.Media.ScaleTransform $script:Zoom, $script:Zoom
+        $w.Width *= $script:Zoom; $w.Height *= $script:Zoom
+    }
+    $ed = @{}
+    foreach ($n in 'EdName', 'EdDelete', 'EdSave', 'EdCancel', 'EdNote', 'EdFind', 'EdFindHint', 'EdFound', 'EdResults', 'EdAdd', 'EdAddAll',
+                   'EdUp', 'EdDown', 'EdRemove', 'EdClear', 'EdCount', 'EdEmpty', 'EdList') { $ed[$n] = $w.FindName($n) }
+    $chosen = New-Object 'System.Collections.ObjectModel.ObservableCollection[PmSong]'
+    $have = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    $ed.EdList.ItemsSource = $chosen
+    $old = $null
+    if ($Name) {
+        $old = @($script:Mine | Where-Object { $_.Name -eq $Name })[0]
+        $byPath = [PmBuild]::PathIndex($script:Songs)
+        $gone = 0
+        foreach ($pth in @($old.Paths)) { $song = $null; if ($byPath.TryGetValue([string]$pth, [ref]$song)) { $chosen.Add($song); [void]$have.Add($song.Path) } else { $gone++ } }
+        $ed.EdName.Text = $Name
+        $ed.EdDelete.Visibility = 'Visible'
+        $w.Title = "Change playlist: $Name"
+        if ($gone) { $ed.EdNote.Text = "$gone of its songs aren't in your music folders any more, so they're left out." }
+    } else { $w.Title = 'New playlist' }
+
+    $showCount = {
+        $secs = 0; foreach ($c in $chosen) { $secs += $c.Seconds }
+        $ed.EdCount.Text = "In the playlist: $('{0:N0}' -f $chosen.Count) song$(if ($chosen.Count -ne 1) { 's' })  ·  $([PmText]::Long($secs))"
+        $ed.EdEmpty.Visibility = if ($chosen.Count) { 'Collapsed' } else { 'Visible' }
+    }
+    $search = {
+        $found = [PmBuild]::Find($script:Songs, $ed.EdFind.Text, 2000)
+        $ed.EdResults.ItemsSource = $found
+        $n = [PmBuild]::LastFound
+        $ed.EdFound.Text = if ($n -gt $found.Count) { "$('{0:N0}' -f $n) songs match; the first $('{0:N0}' -f $found.Count) are shown. Type more to narrow it down." }
+                           else { "$('{0:N0}' -f $n) song$(if ($n -ne 1) { 's' }) shown. Ctrl or Shift + click picks several." }
+    }
+    $add = {
+        param($Songs)
+        $added = 0
+        foreach ($sg in @($Songs)) { if ($sg -and $have.Add($sg.Path)) { $chosen.Add($sg); $added++ } }
+        & $showCount
+        if ($added) { $ed.EdList.ScrollIntoView($chosen[$chosen.Count - 1]) }
+    }
+    $addPicked = {
+        # in the order they are listed, not the order they were clicked
+        $picked = @($ed.EdResults.SelectedItems)
+        $list = $ed.EdResults.ItemsSource
+        & $add (@($picked | Sort-Object { $list.IndexOf($_) }))
+    }
+    $remove = {
+        foreach ($sg in @($ed.EdList.SelectedItems)) { [void]$chosen.Remove($sg); [void]$have.Remove($sg.Path) }
+        & $showCount
+    }
+    $move = {
+        param([int]$By)
+        $i = $ed.EdList.SelectedIndex
+        if ($i -lt 0 -or $ed.EdList.SelectedItems.Count -ne 1) { return }
+        $j = $i + $By
+        if ($j -lt 0 -or $j -ge $chosen.Count) { return }
+        $chosen.Move($i, $j); $ed.EdList.SelectedIndex = $j; $ed.EdList.ScrollIntoView($chosen[$j])
+    }
+
+    $typing = New-Object Windows.Threading.DispatcherTimer
+    $typing.Interval = [TimeSpan]::FromMilliseconds(250)
+    $typing.Add_Tick({ $typing.Stop(); & $search })
+    $ed.EdFind.Add_TextChanged({
+        $ed.EdFindHint.Visibility = if ($ed.EdFind.Text) { 'Collapsed' } else { 'Visible' }
+        $typing.Stop(); $typing.Start()
+    })
+    $ed.EdAdd.Add_Click({ & $addPicked })
+    $ed.EdAddAll.Add_Click({ & $add $ed.EdResults.ItemsSource })
+    $ed.EdResults.Add_MouseDoubleClick({ if ($ed.EdResults.SelectedItem) { & $add $ed.EdResults.SelectedItem } })
+    $ed.EdResults.Add_KeyDown({ param($s, $e) if ($e.Key -eq 'Return') { & $addPicked; $e.Handled = $true } })
+    $ed.EdRemove.Add_Click({ & $remove })
+    $ed.EdList.Add_KeyDown({ param($s, $e) if ($e.Key -eq 'Delete') { & $remove; $e.Handled = $true } })
+    $ed.EdClear.Add_Click({ $chosen.Clear(); $have.Clear(); & $showCount })
+    $ed.EdUp.Add_Click({ & $move -1 })
+    $ed.EdDown.Add_Click({ & $move 1 })
+    $ed.EdCancel.Add_Click({ $w.Close() })
+    $ed.EdSave.Add_Click({
+        $nm = ($ed.EdName.Text -replace '[\\/:*?"<>|]', '').Trim().TrimEnd('.')
+        if (-not $nm) { [void](Show-AppMessage 'Give the playlist a name first.' -Owner $w); $ed.EdName.Focus(); return }
+        if (-not $chosen.Count) { [void](Show-AppMessage 'Add at least one song first.' -Owner $w); return }
+        $clash = @($script:Mine | Where-Object { $_.Name -eq $nm -and $_.Name -ne $Name })
+        if ($clash.Count -and -not (Show-AppMessage "You already have a playlist called ""$nm"". Replace it with this one?" -YesText 'Replace' -NoText 'Go back' -Owner $w)) { return }
+        $script:Mine = @($script:Mine | Where-Object { $_.Name -ne $nm -and $_.Name -ne $Name }) +
+                       [pscustomobject]@{ Name = $nm; Paths = @($chosen | ForEach-Object { $_.Path }) }
+        Save-JsonList $script:MinePath $script:Mine
+        $w.Close()
+        Update-Plan
+        $script:UI.PillMine.IsChecked = $true
+        Set-Status "Saved your playlist ""$nm"" ($($chosen.Count) songs). Press Save playlists to write it out with the others."
+    })
+    $ed.EdDelete.Add_Click({
+        if (-not (Show-AppMessage "Delete your playlist ""$Name""? The next Save playlists sends its file to the Recycle Bin." -YesText 'Delete' -NoText 'Keep it' -Owner $w)) { return }
+        $script:Mine = @($script:Mine | Where-Object { $_.Name -ne $Name })
+        Save-JsonList $script:MinePath $script:Mine
+        $w.Close()
+        Update-Plan
+        Set-Status "Deleted your playlist ""$Name"". Save playlists to tidy away its file."
+    })
+    $w.Add_ContentRendered({ & $search; & $showCount; if ($Name) { $ed.EdFind.Focus() } else { $ed.EdName.Focus() } })
+    $w.Add_Closed({ $typing.Stop() })
+    [void]$w.ShowDialog()
+}
+
+# ---------------------------------------------------------------------------
 #  Importing playlists
 # ---------------------------------------------------------------------------
 function Get-Imports {
@@ -2069,16 +2297,18 @@ try {
     # On a big screen everything is drawn larger too (text, buttons, lists), not just the window.
     $zoom = [Math]::Max(1.0, [Math]::Min(1.3, $area.Width / 1900.0))
     if ($zoom -gt 1.01) { $window.FindName('Root').LayoutTransform = New-Object Windows.Media.ScaleTransform $zoom, $zoom }
+    $script:Zoom = $zoom
     $icon = Get-AssetImage 'Playlist-Maker.ico'
     if ($icon) { $window.Icon = $icon }
     $ui = @{}
     foreach ($n in 'BtnOpen', 'BtnLook', 'BtnHelp', 'BtnAbout', 'TxtStatus', 'Progress', 'TxtNoFolders', 'LstFolders', 'BtnAdd', 'BtnRemove', 'TxtSearchHint',
                    'ChkDecades', 'ChkGenres', 'ChkArtists', 'ChkMixes', 'ChkGroups', 'ChkShuffles', 'TxtShuffles', 'TxtSkip', 'BtnGroups', 'TxtMin', 'CmbOrder', 'CmbArtist', 'CmbPaths', 'CmbType', 'CmbSave',
                    'PanelSub', 'TxtSub', 'PanelOne', 'TxtOne', 'BtnOne', 'BtnRead', 'BtnSave', 'TxtSummary', 'TxtSearch',
-                   'PillAll', 'PillDecade', 'PillGenre', 'PillArtist', 'PillMix', 'PillGroup', 'PillShuffle', 'PillImported', 'TxtEmpty', 'LstPlans', 'BtnImport') { $ui[$n] = $window.FindName($n) }
+                   'PillAll', 'PillDecade', 'PillGenre', 'PillArtist', 'PillMix', 'PillGroup', 'PillShuffle', 'PillImported', 'PillMine', 'TxtEmpty', 'LstPlans', 'BtnImport', 'BtnNew') { $ui[$n] = $window.FindName($n) }
     $script:UI = $ui
 
     $script:Imports = @(Get-Imports)
+    $script:Mine = @(Get-JsonList $script:MinePath)
     Show-Folders
     Show-Options
     Show-Plan
@@ -2122,15 +2352,17 @@ try {
         $ui.TxtSearchHint.Visibility = if ($ui.TxtSearch.Text) { 'Collapsed' } else { 'Visible' }
         $searching.Stop(); $searching.Start()
     })
-    foreach ($p in 'PillAll', 'PillDecade', 'PillGenre', 'PillArtist', 'PillMix', 'PillGroup', 'PillShuffle', 'PillImported') { $ui[$p].Add_Checked({ if ($script:UI) { Show-Plan } }) }
+    foreach ($p in 'PillAll', 'PillDecade', 'PillGenre', 'PillArtist', 'PillMix', 'PillGroup', 'PillShuffle', 'PillImported', 'PillMine') { $ui[$p].Add_Checked({ if ($script:UI) { Show-Plan } }) }
     $ui.LstPlans.Add_MouseDoubleClick({
         $l = $ui.LstPlans.SelectedItem
-        if ($l) { Show-SongList "$($l.Kind): $($l.Name)" "$($l.Name)  ·  $($l.Info)" $l.Songs $(if ($l.Kind -eq 'Imported') { $l }) }
+        if ($l -and $l.Kind -eq 'Mine') { Invoke-Safely { Show-PlaylistEditor -Name $l.Name } }
+        elseif ($l) { Show-SongList "$($l.Kind): $($l.Name)" "$($l.Name)  ·  $($l.Info)" $l.Songs $(if ($l.Kind -eq 'Imported') { $l }) }
     })
     $ui.LstPlans.Add_SelectionChanged({ $ui.BtnOpen.IsEnabled = [bool](Get-PlaylistFolder) })
 
     $ui.BtnRead.Add_Click({ Invoke-Safely { Start-Read } })
     $ui.BtnImport.Add_Click({ Invoke-Safely { Import-Playlists } })
+    $ui.BtnNew.Add_Click({ Invoke-Safely { Show-PlaylistEditor } })
     $ui.BtnSave.Add_Click({ Invoke-Safely { Save-Playlists } })
     $ui.TxtStatus.Add_MouseLeftButtonUp({ if ($script:StatusClick) { Invoke-Safely $script:StatusClick } })
 
