@@ -1,0 +1,21 @@
+{
+  "AppName": "Playlist Maker",
+  "EntryScript": "src\\Playlist-Maker.ps1",
+  "Icon": "assets\\Playlist-Maker.ico",
+  "Side": "Home",
+  "Description": "PowerShell/WPF tool for making playlists from MP3 tags",
+  "RequireAdmin": false,
+  "Release": {
+    "Files": {
+      "Playlist-Maker.ps1": "src\\Playlist-Maker.ps1",
+      "New-PlaylistMakerShortcut.ps1": "src\\New-PlaylistMakerShortcut.ps1",
+      "Playlist Maker.cmd": "release\\Playlist Maker.cmd",
+      "assets\\Playlist-Maker.ico": "assets\\Playlist-Maker.ico",
+      "assets\\Playlist-Maker.png": "assets\\Playlist-Maker.png",
+      "README.md": "README.md",
+      "CHANGELOG.md": "CHANGELOG.md",
+      "LICENSE": "LICENSE"
+    },
+    "Shortcut": "New-PlaylistMakerShortcut.ps1"
+  }
+}
